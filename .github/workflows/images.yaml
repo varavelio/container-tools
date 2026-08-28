@@ -194,9 +194,7 @@ jobs:
 
       # Built natively on per-architecture runners: no QEMU, no emulation.
       # TARGETARCH is passed explicitly so the Dockerfiles never depend on
-      # BuildKit's automatic platform args. The images are distribution-only
-      # (scratch + binaries), so there is nothing to smoke test: consumers
-      # copy the binaries out with `COPY --from`.
+      # BuildKit's automatic platform args.
       - name: Build the image
         working-directory: ${{ matrix.name }}
         run: |
@@ -239,9 +237,7 @@ jobs:
           docker manifest push "${IMAGE}:${VERSION}"
 
   # Keeps a machine-readable inventory of everything published in this
-  # repository's GHCR namespace (images.json). The commits it produces also
-  # count as repository activity, which prevents GitHub from disabling the
-  # scheduled workflow on quiet repositories.
+  # repository's GHCR namespace (images.json).
   track:
     name: Track published images
     needs: [resolve, merge]
