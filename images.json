@@ -1,0 +1,14 @@
+{
+  "goose": {
+    "image": "ghcr.io/varavelio/container-tools/goose",
+    "versions": []
+  },
+  "tailwindcss": {
+    "image": "ghcr.io/varavelio/container-tools/tailwindcss",
+    "versions": []
+  },
+  "task": {
+    "image": "ghcr.io/varavelio/container-tools/task",
+    "versions": []
+  }
+}
