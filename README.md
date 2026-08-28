@@ -18,6 +18,7 @@ have to worry about that.
 | `ghcr.io/varavelio/container-tools/task`        | [go-task/task](https://github.com/go-task/task)                         | `/usr/local/bin/task`                                              | `linux/amd64`, `linux/arm64` |
 | `ghcr.io/varavelio/container-tools/goose`       | [pressly/goose](https://github.com/pressly/goose)                       | `/usr/local/bin/goose`                                             | `linux/amd64`, `linux/arm64` |
 | `ghcr.io/varavelio/container-tools/tailwindcss` | [tailwindlabs/tailwindcss](https://github.com/tailwindlabs/tailwindcss) | `/usr/local/bin/tailwindcss` and `/usr/local/bin/tailwindcss-musl` | `linux/amd64`, `linux/arm64` |
+| `ghcr.io/varavelio/container-tools/dprint`      | [dprint/dprint](https://github.com/dprint/dprint)                       | `/usr/local/bin/dprint` and `/usr/local/bin/dprint-musl`           | `linux/amd64`, `linux/arm64` |
 
 ## Tagging policy
 
@@ -31,7 +32,7 @@ have to worry about that.
 ## Automation
 
 [`.github/workflows/images.yaml`](.github/workflows/images.yaml) runs every six
-hours and:
+hours.
 
 1. Asks the GitHub API for the recent stable releases of every tracked tool
    (pre-releases and drafts are ignored).
@@ -62,19 +63,20 @@ COPY --from ghcr.io/varavelio/container-tools/task:<version> /usr/local/bin/task
 COPY --from ghcr.io/varavelio/container-tools/goose:<version> /usr/local/bin/goose /usr/local/bin/goose
 COPY --from ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss /usr/local/bin/tailwindcss
 COPY --from ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss-musl /usr/local/bin/tailwindcss
+COPY --from ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint /usr/local/bin/dprint
+COPY --from ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint-musl /usr/local/bin/dprint
 ```
 
 ## Adding a tool
 
-Create `<name>/Dockerfile` following the existing ones: an Alpine downloader
-stage that fetches the pinned upstream release for `${TARGETARCH}`, and a
-`FROM scratch` final stage with just the binaries and OCI labels (no CA bundles,
-no entrypoints, the images are not meant to be run). The version must come from
-a `<NAME>_VERSION` build arg.
-
-Then add `"<name>|<owner>/<repo>|<NAME>_VERSION"` to the `TOOLS` arrays in
-`.github/workflows/images.yaml` (one in the `resolve` job, one in the `track`
-job), and add it to the table above.
+1. Create `<name>/Dockerfile` following the existing ones: an Alpine downloader
+   stage that fetches the pinned upstream release for `${TARGETARCH}`, and a
+   `FROM scratch` final stage with just the binaries and OCI labels (no CA
+   bundles, no entrypoints, the images are not meant to be run). The version
+   must come from a `<NAME>_VERSION` build arg.
+2. Add a line `<name>|<owner>/<repo>|<NAME>_VERSION>` to
+   [`scripts/tools.txt`](scripts/tools.txt).
+3. Add it to the table above.
 
 ## Notes
 
