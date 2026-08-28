@@ -1,0 +1,6 @@
+# Tools published by this repository: name|upstream repo|version build arg.
+# Add one line here whenever a new <name>/Dockerfile lands.
+task|go-task/task|TASK_VERSION
+goose|pressly/goose|GOOSE_VERSION
+tailwindcss|tailwindlabs/tailwindcss|TAILWIND_VERSION
+dprint|dprint/dprint|DPRINT_VERSION
