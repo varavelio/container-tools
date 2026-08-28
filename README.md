@@ -59,12 +59,12 @@ The images are intended to be used in this way in your own `Dockerfile`.
 ```dockerfile
 FROM debian:latest
 
-COPY --from ghcr.io/varavelio/container-tools/task:<version> /usr/local/bin/task /usr/local/bin/task
-COPY --from ghcr.io/varavelio/container-tools/goose:<version> /usr/local/bin/goose /usr/local/bin/goose
-COPY --from ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss /usr/local/bin/tailwindcss
-COPY --from ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss-musl /usr/local/bin/tailwindcss
-COPY --from ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint /usr/local/bin/dprint
-COPY --from ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint-musl /usr/local/bin/dprint
+COPY --from=ghcr.io/varavelio/container-tools/task:<version> /usr/local/bin/task /usr/local/bin/task
+COPY --from=ghcr.io/varavelio/container-tools/goose:<version> /usr/local/bin/goose /usr/local/bin/goose
+COPY --from=ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss /usr/local/bin/tailwindcss
+COPY --from=ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss-musl /usr/local/bin/tailwindcss
+COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint /usr/local/bin/dprint
+COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint-musl /usr/local/bin/dprint
 ```
 
 ## Adding a tool
