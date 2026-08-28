@@ -40,6 +40,10 @@ hours and:
 3. Builds each missing version **natively** on amd64 and arm64 runners (no QEMU,
    no emulation) passing the upstream version and `TARGETARCH` as explicit build
    args.
+4. Merges the per-architecture tags into a single multi-arch tag per version.
+5. Scans every tool package in this repository's GHCR namespace and commits
+   [`images.json`](images.json), an inventory of all published versions per
+   tool.
 
 Manual runs (`workflow_dispatch`) accept two optional inputs:
 
@@ -62,12 +66,21 @@ COPY --from ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/b
 
 ## Adding a tool
 
-Create `<name>/Dockerfile` following the existing ones: a downloader stage that
-fetches the pinned upstream release for `${TARGETARCH}`, and a final stage with
-the binary plus the minimum runtime it needs (`FROM scratch` whenever possible)
-and OCI labels. The version must come from a `<NAME>_VERSION` build arg.
+Create `<name>/Dockerfile` following the existing ones: an Alpine downloader
+stage that fetches the pinned upstream release for `${TARGETARCH}`, and a
+`FROM scratch` final stage with just the binaries and OCI labels (no CA bundles,
+no entrypoints, the images are not meant to be run). The version must come from
+a `<NAME>_VERSION` build arg.
+
+Then add `"<name>|<owner>/<repo>|<NAME>_VERSION"` to the `TOOLS` arrays in
+`.github/workflows/images.yaml` (one in the `resolve` job, one in the `track`
+job), and add it to the table above.
 
 ## Notes
 
+- The images have **no `ENTRYPOINT`/`CMD` on purpose**: they are not runnable,
+  only pullable and copyable with `COPY --from`.
+- `images.json` is regenerated and committed by the `track` job on every run; it
+  only changes when the published versions change.
 - New GHCR packages start private. Change the visibility of each package to
   public in its package settings if it should be consumable without login.
