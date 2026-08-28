@@ -13,12 +13,12 @@ have to worry about that.
 
 ## Images
 
-| Image                                           | Upstream                                                                | Binary                                                             | Architectures                |
-| ----------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------- |
-| `ghcr.io/varavelio/container-tools/task`        | [go-task/task](https://github.com/go-task/task)                         | `/usr/local/bin/task`                                              | `linux/amd64`, `linux/arm64` |
-| `ghcr.io/varavelio/container-tools/goose`       | [pressly/goose](https://github.com/pressly/goose)                       | `/usr/local/bin/goose`                                             | `linux/amd64`, `linux/arm64` |
-| `ghcr.io/varavelio/container-tools/tailwindcss` | [tailwindlabs/tailwindcss](https://github.com/tailwindlabs/tailwindcss) | `/usr/local/bin/tailwindcss` and `/usr/local/bin/tailwindcss-musl` | `linux/amd64`, `linux/arm64` |
-| `ghcr.io/varavelio/container-tools/dprint`      | [dprint/dprint](https://github.com/dprint/dprint)                       | `/usr/local/bin/dprint` and `/usr/local/bin/dprint-musl`           | `linux/amd64`, `linux/arm64` |
+| Image                                                                                                  | Upstream                                                                | Binary                                                             | Architectures                |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------- |
+| [ghcr.io/varavelio/container-tools/task](https://ghcr.io/varavelio/container-tools/task)               | [go-task/task](https://github.com/go-task/task)                         | `/usr/local/bin/task`                                              | `linux/amd64`, `linux/arm64` |
+| [ghcr.io/varavelio/container-tools/goose](https://ghcr.io/varavelio/container-tools/goose)             | [pressly/goose](https://github.com/pressly/goose)                       | `/usr/local/bin/goose`                                             | `linux/amd64`, `linux/arm64` |
+| [ghcr.io/varavelio/container-tools/tailwindcss](https://ghcr.io/varavelio/container-tools/tailwindcss) | [tailwindlabs/tailwindcss](https://github.com/tailwindlabs/tailwindcss) | `/usr/local/bin/tailwindcss` and `/usr/local/bin/tailwindcss-musl` | `linux/amd64`, `linux/arm64` |
+| [ghcr.io/varavelio/container-tools/dprint](https://ghcr.io/varavelio/container-tools/dprint)           | [dprint/dprint](https://github.com/dprint/dprint)                       | `/usr/local/bin/dprint` and `/usr/local/bin/dprint-musl`           | `linux/amd64`, `linux/arm64` |
 
 ## Tagging policy
 
