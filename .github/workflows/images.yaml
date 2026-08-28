@@ -1,0 +1,326 @@
+name: Build and publish images
+
+on:
+  schedule:
+    # Check for new upstream releases every 6 hours. GitHub may delay
+    # scheduled runs by a few minutes under load.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: "Comma-separated subset of tools to consider (empty = all)"
+        type: string
+        required: false
+        default: ""
+      force:
+        description: "Rebuild the latest upstream version even if it is already published"
+        type: boolean
+        required: false
+        default: false
+
+# Serialize runs: overlapping runs would race while pushing the same tags.
+concurrency:
+  group: images
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve upstream versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      manifest_matrix: ${{ steps.plan.outputs.manifest_matrix }}
+      image_prefix: ${{ steps.plan.outputs.image_prefix }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Plan the builds
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ONLY_TOOLS: ${{ inputs.tools }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+
+          # Optional knobs, always provided by the workflow but defaulted here
+          # so the script also runs standalone.
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+          ONLY_TOOLS="${ONLY_TOOLS:-}"
+          FORCE="${FORCE:-}"
+
+          # Tools published by this repository, as
+          # name|upstream repo|version build arg.
+          # Add one line here whenever a new <name>/Dockerfile lands.
+          TOOLS=(
+            "task|go-task/task|TASK_VERSION"
+            "goose|pressly/goose|GOOSE_VERSION"
+            "tailwindcss|tailwindlabs/tailwindcss|TAILWIND_VERSION"
+          )
+
+          # How many recent upstream releases to inspect per tool, and how many
+          # missing versions may be queued per tool in a single run. This lets
+          # the workflow catch up gradually if it falls several releases behind.
+          HISTORY_DEPTH=10
+          MAX_PENDING=5
+
+          # Images always live in this repository's GHCR namespace:
+          #   ghcr.io/<owner>/<repo>/<tool>:<upstream-version>
+          IMAGE_PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}"
+          readonly VERSION_RE='^[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.]+)?$'
+
+          ONLY_TOOLS="$(printf '%s' "${ONLY_TOOLS}" | tr -d ' ' | sed -e 's/^,*//' -e 's/,*$//')"
+
+          build_rows=()
+          merge_rows=()
+          summary_lines=()
+
+          for spec in "${TOOLS[@]}"; do
+            IFS='|' read -r name repo build_arg <<<"${spec}"
+
+            if [[ -n "${ONLY_TOOLS}" && ",${ONLY_TOOLS}," != *",${name},"* ]]; then
+              echo "Skipping ${name}: not selected in the tools input."
+              continue
+            fi
+
+            # Recent stable upstream releases, newest first, without the "v" prefix.
+            gh_api_args=(-H "Accept: application/vnd.github+json")
+            if [[ -n "${GITHUB_TOKEN}" ]]; then
+              gh_api_args+=("-H" "Authorization: Bearer ${GITHUB_TOKEN}")
+            fi
+            versions="$(
+              curl -fsSL "${gh_api_args[@]}" \
+                "https://api.github.com/repos/${repo}/releases?per_page=100" |
+                jq -r '.[] | select(.draft != true and .prerelease != true)
+                       | .tag_name | select(startswith("v")) | .[1:]' |
+                sort -rVu | head -n "${HISTORY_DEPTH}"
+            )"
+
+            pending=0
+            while IFS= read -r version; do
+              [[ -z "${version}" ]] && continue
+
+              if [[ ! "${version}" =~ ${VERSION_RE} ]]; then
+                echo "::warning::${name}: ignoring unexpected upstream version '${version}'."
+                continue
+              fi
+
+              # Idempotency: skip versions whose multi-arch tag already exists.
+              if [[ "${FORCE}" != "true" ]] &&
+                 docker manifest inspect "${IMAGE_PREFIX}/${name}:${version}" >/dev/null 2>&1; then
+                continue
+              fi
+
+              merge_rows+=("$(jq -nc --arg name "${name}" --arg version "${version}" \
+                '{name: $name, version: $version}')")
+
+              for combo in "amd64|ubuntu-24.04" "arm64|ubuntu-24.04-arm"; do
+                IFS='|' read -r platform os <<<"${combo}"
+                build_rows+=("$(jq -nc \
+                  --arg name "${name}" --arg version "${version}" \
+                  --arg build_arg "${build_arg}" --arg platform "${platform}" --arg os "${os}" \
+                  '{name: $name, version: $version, build_arg: $build_arg, platform: $platform, os: $os}')")
+              done
+
+              summary_lines+=("- \`${name}:${version}\`")
+              pending=$((pending + 1))
+
+              # Manual (forced) runs only ever rebuild the latest version.
+              if [[ "${FORCE}" == "true" || "${pending}" -ge "${MAX_PENDING}" ]]; then
+                break
+              fi
+            done <<<"${versions}"
+          done
+
+          if [[ "${#build_rows[@]}" -eq 0 ]]; then
+            matrix='{"include":[]}'
+            manifest_matrix='{"include":[]}'
+          else
+            matrix="$(printf '%s\n' "${build_rows[@]}" | jq -cs '{include: .}')"
+            manifest_matrix="$(printf '%s\n' "${merge_rows[@]}" | jq -cs '{include: .}')"
+          fi
+
+          {
+            echo "matrix=${matrix}"
+            echo "manifest_matrix=${manifest_matrix}"
+            echo "image_prefix=${IMAGE_PREFIX}"
+          } >>"${GITHUB_OUTPUT}"
+
+          {
+            echo "### Image build plan"
+            echo
+            echo "Namespace: \`${IMAGE_PREFIX}/<tool>\` (pinned versions only, no \`latest\`)."
+            echo
+            if [[ "${#summary_lines[@]}" -eq 0 ]]; then
+              echo "Nothing to do: every tracked upstream release is already published."
+            else
+              echo "Versions to build and publish:"
+              printf '%s\n' "${summary_lines[@]}"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  build:
+    name: Build ${{ matrix.name }}:${{ matrix.version }} (${{ matrix.platform }})
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    env:
+      IMAGE: ${{ needs.resolve.outputs.image_prefix }}/${{ matrix.name }}
+      VERSION: ${{ matrix.version }}
+      BUILD_ARG: ${{ matrix.build_arg }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      # Built natively on per-architecture runners: no QEMU, no emulation.
+      # TARGETARCH is passed explicitly so the Dockerfiles never depend on
+      # BuildKit's automatic platform args. The images are distribution-only
+      # (scratch + binaries), so there is nothing to smoke test: consumers
+      # copy the binaries out with `COPY --from`.
+      - name: Build the image
+        working-directory: ${{ matrix.name }}
+        run: |
+          docker build \
+            --pull \
+            --build-arg "${BUILD_ARG}=${VERSION}" \
+            --build-arg "TARGETARCH=${PLATFORM}" \
+            --tag "${IMAGE}:${VERSION}-${PLATFORM}" \
+            .
+
+      - name: Push the image
+        run: docker push "${IMAGE}:${VERSION}-${PLATFORM}"
+
+  merge:
+    name: Merge ${{ matrix.name }}:${{ matrix.version }}
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.manifest_matrix) }}
+    env:
+      IMAGE: ${{ needs.resolve.outputs.image_prefix }}/${{ matrix.name }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      # Joins the per-arch tags into a single multi-arch tag. Only the pinned
+      # version tag is published; there is deliberately no `latest` alias.
+      - name: Merge and push the manifest
+        run: |
+          docker manifest create "${IMAGE}:${VERSION}" \
+            --amend "${IMAGE}:${VERSION}-amd64" \
+            --amend "${IMAGE}:${VERSION}-arm64"
+          docker manifest push "${IMAGE}:${VERSION}"
+
+  # Keeps a machine-readable inventory of everything published in this
+  # repository's GHCR namespace (images.json). The commits it produces also
+  # count as repository activity, which prevents GitHub from disabling the
+  # scheduled workflow on quiet repositories.
+  track:
+    name: Track published images
+    needs: [resolve, merge]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Generate images.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Tools published by this repository. Keep in sync with the TOOLS
+          # array in the resolve job.
+          TOOLS=(task goose tailwindcss)
+
+          # Exchange the GitHub token for a GHCR pull token (the same flow
+          # `docker login` uses), so private packages are listed too. Missing
+          # packages simply yield an empty version list.
+          ghcr_token() {
+            local scope="repository:${1}:pull"
+            curl -fsSL -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+              "https://ghcr.io/token?service=ghcr.io&scope=${scope}" | jq -r '.token'
+          }
+
+          {
+            for name in "${TOOLS[@]}"; do
+              path="${GITHUB_REPOSITORY,,}/${name}"
+              token="$(ghcr_token "${path}" || true)"
+
+              tags=""
+              if [[ -n "${token}" ]]; then
+                tags="$(curl -fsSL -H "Authorization: Bearer ${token}" \
+                  "https://ghcr.io/v2/${path}/tags/list" 2>/dev/null |
+                  jq -r '.tags // [] | .[]' || true)"
+              fi
+
+              # Keep the multi-arch version tags only; the per-arch suffixed
+              # tags are an implementation detail of the manifest assembly.
+              versions="$(printf '%s\n' "${tags}" |
+                grep -E '^[0-9]' | grep -vE -- '-(amd64|arm64)$' | sort -rVu || true)"
+
+              printf '%s\t%s\n' "${name}" "$(printf '%s\n' "${versions}" | paste -sd, -)" \
+                >> /tmp/inventory.tsv
+              printf ' - %s: %s published versions\n' \
+                "${name}" "$(printf '%s\n' "${versions}" | grep -c . || true)" >&2
+            done
+          }
+
+          jq -SRn --arg prefix "ghcr.io/${GITHUB_REPOSITORY,,}" '
+            [ inputs
+              | select(index("\t"))
+              | split("\t")
+              | { key: .[0]
+                , value: { image: ($prefix + "/" + .[0])
+                         , versions: (.[1] | if length == 0 then [] else split(",") end) } }
+              ]
+            | from_entries
+          ' < /tmp/inventory.tsv > images.json
+          echo "images.json updated:"
+          cat images.json
+
+      - name: Commit images.json
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add images.json
+          if git diff --cached --quiet; then
+            echo "images.json is already up to date."
+            exit 0
+          fi
+          git commit -m "chore(images): update published versions"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
