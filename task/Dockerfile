@@ -9,16 +9,13 @@ RUN apk add --no-cache curl tar ca-certificates && \
     tar -xz -C /tmp task && \
     chmod +x /tmp/task
 
-# Stage 2: Final scratch image
+# Stage 2: Final scratch image with the binary only.
 FROM scratch
 
 ARG TASK_VERSION
 
-LABEL org.opencontainers.image.source="https://github.com/varavel/container-tools" \
+LABEL org.opencontainers.image.source="https://github.com/varavelio/container-tools" \
       org.opencontainers.image.title="task" \
       org.opencontainers.image.version="${TASK_VERSION}"
 
-COPY --from=downloader /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=downloader /tmp/task /usr/local/bin/task
-
-ENTRYPOINT ["/usr/local/bin/task"]
