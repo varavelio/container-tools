@@ -11,18 +11,19 @@ RUN apk add --no-cache curl ca-certificates && \
       *) echo "Unsupported target arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fsSL "https://github.com/tailwindlabs/tailwindcss/releases/download/v${TAILWIND_VERSION}/tailwindcss-linux-${ARCH}" -o /tmp/tailwindcss && \
-    chmod +x /tmp/tailwindcss
+    curl -fsSL "https://github.com/tailwindlabs/tailwindcss/releases/download/v${TAILWIND_VERSION}/tailwindcss-linux-${ARCH}-musl" -o /tmp/tailwindcss-musl && \
+    chmod +x /tmp/tailwindcss /tmp/tailwindcss-musl
 
-# Stage 2: Final scratch image
+# Stage 2: Final scratch image with both standalone binaries (the default
+# glibc build and the musl one), so consumers pick whichever matches their
+# base image.
 FROM scratch
 
 ARG TAILWIND_VERSION
 
-LABEL org.opencontainers.image.source="https://github.com/varavel/container-tools" \
+LABEL org.opencontainers.image.source="https://github.com/varavelio/container-tools" \
       org.opencontainers.image.title="tailwindcss" \
       org.opencontainers.image.version="${TAILWIND_VERSION}"
 
-COPY --from=downloader /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=downloader /tmp/tailwindcss /usr/local/bin/tailwindcss
-
-ENTRYPOINT ["/usr/local/bin/tailwindcss"]
+COPY --from=downloader /tmp/tailwindcss-musl /usr/local/bin/tailwindcss-musl
