@@ -3,7 +3,8 @@
 #
 # For every tool in tools.txt it lists the recent stable upstream releases
 # (newest first), skips the ones whose multi-arch tag already exists in GHCR,
-# and emits the dynamic matrices consumed by the build and merge jobs.
+# and emits the dynamic matrices consumed by the build and merge jobs plus the
+# per-tool version that the `latest` tag should track.
 #
 # Standalone usage (uses the GitHub API anonymously):
 #   GITHUB_REPOSITORY=owner/repo bash scripts/resolve.sh
@@ -36,6 +37,7 @@ ONLY_TOOLS="$(printf '%s' "${ONLY_TOOLS}" | tr -d ' ' | sed -e 's/^,*//' -e 's/,
 
 build_rows=()
 merge_rows=()
+latest_rows=()
 summary_lines=()
 
 while IFS='|' read -r name repo build_arg; do
@@ -58,6 +60,25 @@ while IFS='|' read -r name repo build_arg; do
              | .tag_name | sub("^v"; "")' |
       sort -rVu | head -n "${HISTORY_DEPTH}"
   )"
+
+  # The `latest` tag always tracks the newest stable upstream release, even
+  # on runs with nothing to build, so it gets created and repaired by the
+  # `latest` job on quiet runs too.
+  latest_version=""
+  while IFS= read -r version; do
+    [[ -z "${version}" ]] && continue
+    if [[ "${version}" =~ ${VERSION_RE} ]]; then
+      latest_version="${version}"
+      break
+    fi
+  done <<<"${versions}"
+
+  if [[ -n "${latest_version}" ]]; then
+    latest_rows+=("$(jq -nc --arg name "${name}" --arg version "${latest_version}" \
+      '{name: $name, version: $version}')")
+  else
+    echo "::warning::${name}: no suitable stable release found for the latest tag."
+  fi
 
   pending=0
   while IFS= read -r version; do
@@ -98,24 +119,37 @@ done < "${TOOLS_FILE}"
 if [[ "${#build_rows[@]}" -eq 0 ]]; then
   matrix='{"include":[]}'
   manifest_matrix='{"include":[]}'
+  has_pending=false
 else
   matrix="$(printf '%s\n' "${build_rows[@]}" | jq -cs '{include: .}')"
   manifest_matrix="$(printf '%s\n' "${merge_rows[@]}" | jq -cs '{include: .}')"
+  has_pending=true
 fi
+
+if [[ "${#latest_rows[@]}" -eq 0 ]]; then
+  # Only reachable with an empty tools.txt or an ONLY_TOOLS filter that
+  # matches nothing (e.g. a typo): fail with a clear message instead of
+  # letting downstream jobs trip over empty matrices.
+  echo "::error::No tools resolved; check scripts/tools.txt and the ONLY_TOOLS input."
+  exit 1
+fi
+latest_matrix="$(printf '%s\n' "${latest_rows[@]}" | jq -cs '{include: .}')"
 
 {
   echo "matrix=${matrix}"
   echo "manifest_matrix=${manifest_matrix}"
+  echo "latest_matrix=${latest_matrix}"
   echo "image_prefix=${IMAGE_PREFIX}"
+  echo "has_pending=${has_pending}"
 } >>"${GITHUB_OUTPUT:-/dev/null}"
 
 {
   echo "### Image build plan"
   echo
-  echo "Namespace: \`${IMAGE_PREFIX}/<tool>\` (pinned versions only, no \`latest\`)."
+  echo "Namespace: \`${IMAGE_PREFIX}/<tool>\`; every tool also gets a moving \`latest\` tag."
   echo
   if [[ "${#summary_lines[@]}" -eq 0 ]]; then
-    echo "Nothing to do: every tracked upstream release is already published."
+    echo "Nothing to build: every tracked upstream release is already published."
   else
     echo "Versions to build and publish:"
     printf '%s\n' "${summary_lines[@]}"

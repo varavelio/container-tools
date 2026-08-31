@@ -24,7 +24,10 @@ have to worry about that.
 
 - Tags mirror the exact upstream release version, without the leading `v` if it
   exists (e.g. `v3.53.1` -> `3.53.1`).
-- There is **no `latest` tag, by design**: consumers must always pin a version.
+- Every tool also carries a `latest` tag that always points at its newest stable
+  upstream release that is already published; the automation moves it on every
+  run. Pinning an exact version is recommended for reproducible builds in your
+  own projects.
 - Per-architecture tags (`<version>-amd64`, `<version>-arm64`) are also
   published; they are an implementation detail of the multi-arch assembly and
   are version-pinned as well.
@@ -37,12 +40,16 @@ hours.
 1. Asks the GitHub API for the recent stable releases of every tracked tool
    (pre-releases and drafts are ignored).
 2. Compares them against the tags already published in GHCR, so runs are
-   idempotent and only new versions get built.
+   idempotent, only new versions get built, and runs with nothing to publish
+   finish successfully without building anything.
 3. Builds each missing version **natively** on amd64 and arm64 runners (no QEMU,
    no emulation) passing the upstream version and `TARGETARCH` as explicit build
    args.
 4. Merges the per-architecture tags into a single multi-arch tag per version.
-5. Scans every tool package in this repository's GHCR namespace and commits
+5. Moves the `latest` tag of every tool to its newest published version (only
+   when it actually changed; `latest` is never pointed at a version that is not
+   fully published).
+6. Scans every tool package in this repository's GHCR namespace and commits
    [`images.json`](images.json), an inventory of all published versions per
    tool.
 
@@ -66,6 +73,9 @@ COPY --from=ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/b
 COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint /usr/local/bin/dprint
 COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint-musl /usr/local/bin/dprint
 ```
+
+A `latest` tag is available on every image, but explicit versions are
+recommended so builds stay reproducible.
 
 ## Adding a tool
 

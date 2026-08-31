@@ -28,8 +28,9 @@ permissions:
 
 jobs:
   # Lists the recent stable upstream releases of every tool in
-  # scripts/tools.txt and emits the matrices of the versions that are still
-  # missing in GHCR. All the logic lives in scripts/resolve.sh.
+  # scripts/tools.txt, emits the matrices of the versions that are still
+  # missing in GHCR, and resolves the newest stable release of each tool for
+  # the `latest` tag. All the logic lives in scripts/resolve.sh.
   resolve:
     name: Resolve upstream versions
     runs-on: ubuntu-latest
@@ -39,7 +40,9 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       manifest_matrix: ${{ steps.plan.outputs.manifest_matrix }}
+      latest_matrix: ${{ steps.plan.outputs.latest_matrix }}
       image_prefix: ${{ steps.plan.outputs.image_prefix }}
+      has_pending: ${{ steps.plan.outputs.has_pending }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
@@ -63,6 +66,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}:${{ matrix.version }} (${{ matrix.platform }})
     needs: resolve
+    if: ${{ needs.resolve.outputs.has_pending == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
@@ -97,11 +101,12 @@ jobs:
       - name: Push the image
         run: docker push "${IMAGE}:${VERSION}-${PLATFORM}"
 
-  # Joins the per-arch tags into a single multi-arch tag. Only the pinned
-  # version tag is published; there is deliberately no `latest` alias.
+  # Joins the per-arch tags into a single multi-arch tag per version. The
+  # `latest` alias is maintained separately by the `latest` job.
   merge:
     name: Merge ${{ matrix.name }}:${{ matrix.version }}
     needs: [resolve, build]
+    if: ${{ needs.resolve.outputs.has_pending == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -124,6 +129,53 @@ jobs:
             --amend "${IMAGE}:${VERSION}-amd64" \
             --amend "${IMAGE}:${VERSION}-arm64"
           docker manifest push "${IMAGE}:${VERSION}"
+
+  # Keeps a `latest` tag on every tool pointing at its newest stable upstream
+  # release. Runs on every run, not only when something was built, so `latest`
+  # is also created/repaired on quiet runs. It only ever points at versions
+  # whose multi-arch manifest is fully published, so a failed build or merge
+  # never corrupts it.
+  latest:
+    name: Refresh latest (${{ matrix.name }})
+    needs: [resolve, merge]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.latest_matrix) }}
+    env:
+      IMAGE: ${{ needs.resolve.outputs.image_prefix }}/${{ matrix.name }}
+      NAME: ${{ matrix.name }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Move the latest tag
+        run: |
+          if ! docker manifest inspect "${IMAGE}:${VERSION}" >/dev/null 2>&1; then
+            echo "::warning::${IMAGE}:${VERSION} is not published (build or merge failed?); leaving latest untouched."
+            exit 0
+          fi
+
+          current="$(docker manifest inspect "${IMAGE}:latest" 2>/dev/null || true)"
+          target="$(docker manifest inspect "${IMAGE}:${VERSION}")"
+          if [[ -n "${current}" && "${current}" == "${target}" ]]; then
+            echo "${IMAGE}:latest already points at ${VERSION}; nothing to do."
+            exit 0
+          fi
+
+          docker manifest create "${IMAGE}:latest" \
+            --amend "${IMAGE}:${VERSION}-amd64" \
+            --amend "${IMAGE}:${VERSION}-arm64"
+          docker manifest push "${IMAGE}:latest"
+          echo "${IMAGE}:latest now points at ${VERSION}."
+          echo "- \`${NAME}:latest\` -> \`${VERSION}\`" >>"${GITHUB_STEP_SUMMARY}"
 
   # Keeps images.json, the inventory of everything published in this
   # repository's GHCR namespace, up to date.
