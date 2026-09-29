@@ -2,6 +2,7 @@
   "dprint": {
     "image": "ghcr.io/varavelio/container-tools/dprint",
     "versions": [
+      "0.58.0",
       "0.57.4",
       "0.57.3",
       "0.57.2",
