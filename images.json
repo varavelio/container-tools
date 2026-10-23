@@ -48,6 +48,10 @@
       "3.24.0"
     ]
   },
+  "moq": {
+    "image": "ghcr.io/varavelio/container-tools/moq",
+    "versions": []
+  },
   "tailwindcss": {
     "image": "ghcr.io/varavelio/container-tools/tailwindcss",
     "versions": [
