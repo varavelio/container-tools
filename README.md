@@ -19,6 +19,7 @@ have to worry about that.
 | [ghcr.io/varavelio/container-tools/goose](https://ghcr.io/varavelio/container-tools/goose)             | [pressly/goose](https://github.com/pressly/goose)                       | `/usr/local/bin/goose`                                             | `linux/amd64`, `linux/arm64` |
 | [ghcr.io/varavelio/container-tools/tailwindcss](https://ghcr.io/varavelio/container-tools/tailwindcss) | [tailwindlabs/tailwindcss](https://github.com/tailwindlabs/tailwindcss) | `/usr/local/bin/tailwindcss` and `/usr/local/bin/tailwindcss-musl` | `linux/amd64`, `linux/arm64` |
 | [ghcr.io/varavelio/container-tools/dprint](https://ghcr.io/varavelio/container-tools/dprint)           | [dprint/dprint](https://github.com/dprint/dprint)                       | `/usr/local/bin/dprint` and `/usr/local/bin/dprint-musl`           | `linux/amd64`, `linux/arm64` |
+| [ghcr.io/varavelio/container-tools/moq](https://ghcr.io/varavelio/container-tools/moq)                 | [matryer/moq](https://github.com/matryer/moq)                           | `/usr/local/bin/moq`                                               | `linux/amd64`, `linux/arm64` |
 
 ## Tagging policy
 
@@ -72,6 +73,7 @@ COPY --from=ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/b
 COPY --from=ghcr.io/varavelio/container-tools/tailwindcss:<version> /usr/local/bin/tailwindcss-musl /usr/local/bin/tailwindcss
 COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint /usr/local/bin/dprint
 COPY --from=ghcr.io/varavelio/container-tools/dprint:<version> /usr/local/bin/dprint-musl /usr/local/bin/dprint
+COPY --from=ghcr.io/varavelio/container-tools/moq:<version> /usr/local/bin/moq /usr/local/bin/moq
 ```
 
 A `latest` tag is available on every image, but explicit versions are
