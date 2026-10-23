@@ -50,7 +50,13 @@
   },
   "moq": {
     "image": "ghcr.io/varavelio/container-tools/moq",
-    "versions": []
+    "versions": [
+      "0.8.1",
+      "0.8.0",
+      "0.7.1",
+      "0.7.0",
+      "0.6.0"
+    ]
   },
   "tailwindcss": {
     "image": "ghcr.io/varavelio/container-tools/tailwindcss",
