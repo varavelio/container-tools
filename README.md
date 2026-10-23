@@ -81,11 +81,12 @@ recommended so builds stay reproducible.
 
 ## Adding a tool
 
-1. Create `<name>/Dockerfile` following the existing ones: an Alpine downloader
-   stage that fetches the pinned upstream release for `${TARGETARCH}`, and a
-   `FROM scratch` final stage with just the binaries and OCI labels (no CA
-   bundles, no entrypoints, the images are not meant to be run). The version
-   must come from a `<NAME>_VERSION` build arg.
+1. Create `<name>/Dockerfile` following the existing ones: a builder stage that
+   produces the pinned upstream release for `${TARGETARCH}` (downloading the
+   upstream asset, or building it from source when no usable release asset
+   exists), and a `FROM scratch` final stage with just the binaries and OCI
+   labels (no CA bundles, no entrypoints, the images are not meant to be run).
+   The version must come from a `<NAME>_VERSION` build arg.
 2. Add a line `<name>|<owner>/<repo>|<NAME>_VERSION>` to
    [`scripts/tools.txt`](scripts/tools.txt).
 3. Add it to the table above.
