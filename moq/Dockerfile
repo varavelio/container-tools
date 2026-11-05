@@ -4,7 +4,13 @@ FROM golang:alpine AS builder
 ARG MOQ_VERSION \
     TARGETARCH
 
-RUN mkdir /src && cd /src && \
+# note: moq before 0.5.2 needs x/tools v0.24.0, which fails to compile with
+# current Go (tokeninternal size assert), so those versions build with Go
+# 1.23 instead. Drop the pin when they leave the build window.
+RUN case "${MOQ_VERSION}" in \
+      0.[0-4].*|0.5.0|0.5.1) export GOTOOLCHAIN=go1.23.12 ;; \
+    esac && \
+    mkdir /src && cd /src && \
     go mod init build >/dev/null && \
     go get "github.com/matryer/moq@v${MOQ_VERSION}" >/dev/null && \
     CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
