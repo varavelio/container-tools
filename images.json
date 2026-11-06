@@ -66,6 +66,7 @@
   "tailwindcss": {
     "image": "ghcr.io/varavelio/container-tools/tailwindcss",
     "versions": [
+      "4.3.5",
       "4.3.4",
       "4.3.3",
       "4.3.2",
